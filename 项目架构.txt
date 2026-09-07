@@ -1,0 +1,1390 @@
+# Credit Reputation Protocol
+
+## Hackathon MVP Project Brief
+
+### 1. 项目简介
+
+本项目是一个面向链上经济主体的跨链信誉评估与借贷参考系统。
+
+用户可以提交一个钱包地址，并选择该钱包对应的主体类型，例如：
+
+* Personal Wallet
+* AI Agent Wallet
+* Business Wallet
+* DAO / Treasury Wallet
+
+系统会自动收集该钱包在不同区块链上的公开行为数据，并通过 Creditcoin 的 Attestcoin 对关键跨链数据进行验证。
+
+第一版 MVP 不使用复杂的自动评分算法，而是采用：
+
+**自动数据采集 + Attestcoin 数据验证 + 人工后台审核评分 + 信贷结果展示**
+
+最终生成该钱包的：
+
+* Reputation Score
+* Risk Level
+* Suggested Credit Limit
+* Suggested APR
+* Suggested Collateral Ratio
+* Reviewer Notes
+
+这些结果可以提供给 DeFi、RWA Lending Protocol、AI Agent Lending 等场景作为借贷决策参考。
+
+---
+
+# 2. 项目目标
+
+当前主流 DeFi Lending 通常采用超额抵押机制，因此不需要判断借款人的真实信用。
+
+本项目希望探索另一种模式：
+
+**通过可验证的历史链上行为，建立钱包级别的 Reputation Profile，为低抵押或信用型借贷提供参考。**
+
+核心目标不是证明“这个钱包背后的人是谁”，而是判断：
+
+> 这个链上经济主体过去是否表现稳定、是否具备良好的金融行为历史，以及贷款机构是否可以降低对其抵押品的要求。
+
+长期来看，一个维护多年、拥有大量正常金融行为和良好还款记录的钱包，本身可以形成一种 Reputation Capital。
+
+---
+
+# 3. 第一版 MVP 核心流程
+
+整体流程：
+
+```text
+User
+  ↓
+输入 Wallet Address
+  ↓
+选择 Wallet Type
+  ↓
+提交 Assessment Request
+  ↓
+Backend Worker
+  ↓
+收集链上历史数据
+  ↓
+Attestcoin 验证关键跨链数据
+  ↓
+生成 Wallet Profile
+  ↓
+Admin Dashboard
+  ↓
+人工审核
+  ↓
+给出 Reputation Score
+Risk Level
+Suggested Credit Limit
+Suggested APR
+Suggested Collateral
+  ↓
+保存 Assessment Result
+  ↓
+用户 / 第三方 Lending Protocol 查询结果
+```
+
+---
+
+# 4. Wallet Type
+
+用户提交钱包时需要声明钱包类型。
+
+第一版支持：
+
+```text
+PERSONAL
+AI_AGENT
+BUSINESS
+DAO
+```
+
+示例：
+
+```text
+0xaaa...
+Type: AI_AGENT
+```
+
+或者：
+
+```text
+0xbbb...
+Type: PERSONAL
+```
+
+第一版可以允许用户自行声明类型。
+
+后续版本可以加入：
+
+* 第三方钱包类型认证
+* DID
+* KYC Attestation
+* Smart Account 类型识别
+* Agent Identity Verification
+* Business Verification
+
+---
+
+# 5. 链上数据采集
+
+Backend Worker 负责读取钱包的公开链上数据。
+
+第一版建议先只支持：
+
+```text
+Ethereum / Sepolia
+```
+
+后续再增加：
+
+```text
+Arbitrum
+Base
+Optimism
+Polygon
+Creditcoin
+```
+
+---
+
+# 6. Wallet 基础数据
+
+需要收集：
+
+```text
+walletAddress
+walletType
+
+walletAge
+firstTransactionTime
+lastActiveTime
+
+transactionCount
+activeDays
+
+ethBalance
+stablecoinBalance
+```
+
+这些数据主要用于描述钱包历史和当前 Financial Capacity。
+
+注意：
+
+当前资产余额不能直接等价于信用。
+
+例如：
+
+```text
+100 ETH balance
+```
+
+不代表：
+
+```text
+Excellent Credit
+```
+
+因此资产情况和信用行为需要分开处理。
+
+---
+
+# 7. DeFi Lending 数据
+
+第一版可以优先支持一个 Lending Protocol。
+
+推荐：
+
+```text
+Aave
+```
+
+需要分析的指标包括：
+
+```text
+totalBorrowed
+
+totalRepaid
+
+borrowCount
+
+repaymentCount
+
+outstandingDebt
+
+liquidationCount
+
+liquidatedAmount
+
+largestLoan
+
+averageLoanSize
+
+creditHistoryLength
+
+currentCollateral
+```
+
+后续可以加入：
+
+```text
+repaymentRatio
+
+liquidationRate
+
+debtUtilization
+
+protocolDiversity
+
+chainDiversity
+```
+
+---
+
+# 8. Attestcoin 的作用
+
+Attestcoin 不负责评分。
+
+Attestcoin 的主要作用是：
+
+**验证源链上的关键行为确实发生过。**
+
+流程：
+
+```text
+Ethereum
+  ↓
+Wallet Lending / Repayment Events
+  ↓
+Backend Worker
+  ↓
+生成 / 获取 Proof
+  ↓
+Attestcoin
+  ↓
+Creditcoin
+  ↓
+Verified Evidence
+```
+
+Attestcoin 的职责是：
+
+```text
+Verification Layer
+```
+
+而不是：
+
+```text
+Scoring Engine
+```
+
+评分和风险判断由项目本身负责。
+
+---
+
+# 9. 第一版评分方式
+
+第一版不做自动 Credit Scoring Algorithm。
+
+原因：
+
+不同钱包之间：
+
+* 资金规模差异很大
+* 借贷金额差异很大
+* 钱包年龄不同
+* 使用协议不同
+* 风险行为类型不同
+
+如果直接设计固定数学模型，很容易导致结果失真。
+
+因此第一版采用：
+
+**Human-in-the-loop Underwriting**
+
+即：
+
+```text
+系统自动整理数据
+↓
+人工查看
+↓
+人工评分
+```
+
+---
+
+# 10. Admin Dashboard
+
+后台审核员可以查看用户提交的钱包 Assessment Request。
+
+后台需要展示：
+
+## Wallet Information
+
+```text
+Wallet Address
+
+Wallet Type
+
+Wallet Age
+
+First Transaction
+
+Last Active Time
+
+ETH Balance
+
+Stablecoin Balance
+
+Transaction Count
+
+Active Days
+```
+
+---
+
+## Lending History
+
+```text
+Total Borrowed
+
+Total Repaid
+
+Outstanding Debt
+
+Borrow Count
+
+Repayment Count
+
+Liquidation Count
+
+Liquidated Amount
+
+Largest Loan
+
+Average Loan Size
+
+Current Collateral
+```
+
+---
+
+## Verification
+
+```text
+Attestcoin Verification Status
+
+Verified Transactions
+
+Verified Lending Events
+
+Verified Repayment Events
+
+Source Chain
+
+Last Verification Time
+```
+
+---
+
+# 11. 人工审核表单
+
+审核员最终填写：
+
+```text
+Reputation Score
+0 - 1000
+```
+
+```text
+Risk Level
+
+LOW
+MEDIUM
+HIGH
+```
+
+```text
+Suggested Credit Limit
+```
+
+例如：
+
+```text
+$15,000
+```
+
+```text
+Suggested APR
+```
+
+例如：
+
+```text
+8.5%
+```
+
+```text
+Suggested Collateral Ratio
+```
+
+例如：
+
+```text
+70%
+```
+
+```text
+Reviewer Notes
+```
+
+例如：
+
+```text
+Strong repayment history.
+No liquidation events.
+Wallet active for more than two years.
+Current debt exposure is relatively low.
+```
+
+最后：
+
+```text
+Approve Assessment
+```
+
+---
+
+# 12. 用户结果页面
+
+用户提交钱包后，可以查看最终 Assessment Result。
+
+示例：
+
+```text
+Wallet
+
+0x1234...abcd
+
+
+Wallet Type
+
+AI Agent
+
+
+Reputation Score
+
+862 / 1000
+
+
+Risk Level
+
+LOW
+
+
+Suggested Credit Limit
+
+$15,000
+
+
+Suggested APR
+
+8.5%
+
+
+Suggested Collateral Ratio
+
+70%
+```
+
+---
+
+## Verified Facts
+
+```text
+Wallet Age
+2.6 years
+
+Total Borrowed
+$86,000
+
+Total Repaid
+$82,000
+
+Outstanding Debt
+$4,000
+
+Borrow Events
+23
+
+Repayment Events
+21
+
+Liquidations
+0
+```
+
+---
+
+## Reviewer Notes
+
+```text
+Good historical repayment behavior.
+
+No liquidation history.
+
+Long-term active wallet.
+
+Moderate current debt exposure.
+```
+
+---
+
+# 13. 项目价值
+
+项目并不是简单给钱包生成一个分数。
+
+真正的价值是：
+
+**帮助 Lending Protocol 获取一个经过整理和验证的链上风险画像。**
+
+第三方协议可以根据自己的风险偏好决定如何使用。
+
+例如：
+
+```text
+Protocol A
+
+Score > 850
+
+Collateral Ratio:
+50%
+```
+
+另一个：
+
+```text
+Protocol B
+
+Score > 750
+
+Collateral Ratio:
+80%
+```
+
+或者某个协议完全不使用总分，只查看：
+
+```text
+Liquidation Count = 0
+
+Credit History > 12 months
+
+Total Repaid > $20,000
+```
+
+因此：
+
+**Score 只是 Reputation Profile 的一部分，而不是唯一可信数据。**
+
+---
+
+# 14. 项目核心理念
+
+核心原则：
+
+```text
+Don't trust the score.
+Verify the evidence.
+```
+
+第三方不需要完全相信项目给出的评分。
+
+他们可以查看：
+
+* 原始钱包数据
+* Verified Evidence
+* Attestcoin Proof
+* Reviewer Notes
+* Credit Profile
+
+最终自己进行金融决策。
+
+---
+
+# 15. 主要应用场景
+
+第一阶段主要考虑：
+
+## Undercollateralized Lending
+
+传统 DeFi：
+
+```text
+Collateral:
+$15,000
+
+Borrow:
+$10,000
+```
+
+信誉较高钱包：
+
+```text
+Collateral:
+$5,000
+
+Borrow:
+$10,000
+```
+
+信誉系统的作用是帮助 Lending Protocol 判断：
+
+```text
+是否值得降低抵押率？
+```
+
+---
+
+## AI Agent Lending
+
+例如：
+
+```text
+AI Agent A
+
+Active:
+18 months
+
+Transactions:
+12,000+
+
+Historical Borrowing:
+$400,000
+
+Repayment:
+100%
+
+Liquidations:
+0
+```
+
+系统可以评估：
+
+```text
+Reputation Score
+
+Risk Level
+
+Suggested Credit Limit
+```
+
+从而支持未来：
+
+```text
+Agent-to-Agent Lending
+
+Agent Credit Line
+
+Agent Compute Credit
+
+Agent DeFi Credit
+```
+
+---
+
+## RWA Lending
+
+未来可以加入现实资产验证。
+
+例如：
+
+```text
+Verified Property
+
+Verified Vehicle
+
+Verified Invoice
+
+Verified Revenue
+
+Verified Business Assets
+```
+
+RWA 不应该简单增加 Reputation Score。
+
+建议单独生成：
+
+```text
+Financial Capacity
+```
+
+例如：
+
+```text
+Credit Score:
+840
+
+Verified Crypto Assets:
+$30,000
+
+Verified RWA:
+$120,000
+
+Risk Level:
+LOW
+```
+
+这样可以区分：
+
+```text
+Creditworthiness
+
+和
+
+Financial Capacity
+```
+
+---
+
+# 16. RWA 后续架构
+
+未来流程：
+
+```text
+On-chain Financial History
+         +
+Verified RWA
+         ↓
+Credit Profile
+         ↓
+Underwriting
+         ↓
+Loan Terms
+```
+
+RWA 需要至少验证：
+
+```text
+Asset Existence
+
+Asset Ownership
+
+Asset Valuation
+
+Existing Lien / Encumbrance
+
+Verification Timestamp
+```
+
+避免：
+
+```text
+同一个现实资产
+同时在多个平台重复抵押
+```
+
+---
+
+# 17. 技术栈
+
+## Frontend
+
+```text
+Vue 3
+
+Vite
+
+TypeScript
+
+shadcn-vue
+
+Vue Router
+
+Pinia
+
+viem
+```
+
+---
+
+## Backend
+
+```text
+Node.js
+
+TypeScript
+
+Hono
+
+viem
+
+SQLite
+
+Drizzle ORM
+```
+
+Backend 主要负责：
+
+```text
+Wallet Data Fetching
+
+Blockchain RPC Interaction
+
+DeFi Event Parsing
+
+Assessment Request
+
+Admin Management
+
+Database
+
+Attestcoin Integration
+```
+
+---
+
+## Smart Contracts
+
+```text
+Solidity
+
+Hardhat
+
+viem
+
+Hardhat Ignition
+```
+
+第一版合约可以包括：
+
+```text
+ReputationRegistry.sol
+
+DemoLending.sol
+```
+
+后续可能加入：
+
+```text
+CreditPassport.sol
+```
+
+---
+
+## Blockchain
+
+```text
+Ethereum / Sepolia
+
+Creditcoin
+
+Attestcoin
+```
+
+---
+
+## DeFi Integration
+
+第一版：
+
+```text
+Aave
+```
+
+后续：
+
+```text
+Compound
+
+Spark
+
+Morpho
+```
+
+---
+
+# 18. Database Design
+
+第一版 SQLite 可以设计以下表。
+
+## wallets
+
+```text
+id
+
+address
+
+wallet_type
+
+first_seen
+
+last_active
+
+created_at
+```
+
+---
+
+## wallet_metrics
+
+```text
+wallet_id
+
+eth_balance
+
+stablecoin_balance
+
+transaction_count
+
+active_days
+
+total_borrowed
+
+total_repaid
+
+outstanding_debt
+
+borrow_count
+
+repayment_count
+
+liquidation_count
+
+liquidated_amount
+
+largest_loan
+
+average_loan_size
+
+current_collateral
+```
+
+---
+
+## assessment_requests
+
+```text
+id
+
+wallet_id
+
+status
+
+submitted_at
+
+reviewed_at
+```
+
+状态：
+
+```text
+PENDING
+
+ANALYZING
+
+READY_FOR_REVIEW
+
+APPROVED
+
+REJECTED
+```
+
+---
+
+## assessments
+
+```text
+id
+
+wallet_id
+
+reputation_score
+
+risk_level
+
+suggested_credit_limit
+
+suggested_apr
+
+suggested_collateral_ratio
+
+reviewer_notes
+
+created_at
+```
+
+---
+
+## attestations
+
+```text
+id
+
+wallet_id
+
+chain_id
+
+source_tx_hash
+
+event_type
+
+proof_status
+
+verified_at
+```
+
+---
+
+# 19. Backend API
+
+第一版 API 可以包括：
+
+```text
+POST /api/wallets/analyze
+```
+
+提交：
+
+```text
+walletAddress
+
+walletType
+```
+
+---
+
+```text
+GET /api/wallets/:address
+```
+
+读取钱包数据。
+
+---
+
+```text
+GET /api/wallets/:address/assessment
+```
+
+读取评分结果。
+
+---
+
+```text
+GET /api/admin/assessments
+```
+
+读取等待审核的钱包。
+
+---
+
+```text
+GET /api/admin/assessments/:id
+```
+
+查看钱包完整分析。
+
+---
+
+```text
+POST /api/admin/assessments/:id/review
+```
+
+提交人工评分。
+
+---
+
+# 20. Demo Lending Contract
+
+Hackathon 可以额外实现一个简单：
+
+```text
+DemoLending.sol
+```
+
+作用：
+
+读取 Reputation Registry 中的钱包评分，并根据评分给出不同 Lending 条件。
+
+例如：
+
+```text
+Score < 500
+
+Reject
+```
+
+```text
+Score 500 - 699
+
+Collateral:
+120%
+
+APR:
+15%
+```
+
+```text
+Score 700 - 849
+
+Collateral:
+80%
+
+APR:
+10%
+```
+
+```text
+Score >= 850
+
+Collateral:
+50%
+
+APR:
+7%
+```
+
+这里只是用于展示：
+
+```text
+Reputation
+↓
+实际金融价值
+```
+
+不需要做完整 Lending Protocol。
+
+---
+
+# 21. 第一版 MVP 开发范围
+
+Hackathon MVP 不要实现：
+
+```text
+十条链
+
+十个 Lending Protocol
+
+复杂 AI Scoring
+
+完整 RWA Infrastructure
+
+真实个人身份系统
+
+复杂 Sybil Detection
+```
+
+第一版只完成：
+
+```text
+Ethereum / Sepolia
+
+↓
+
+Aave Data
+
+↓
+
+Backend Worker
+
+↓
+
+Attestcoin Verification
+
+↓
+
+Admin Human Review
+
+↓
+
+Reputation Profile
+
+↓
+
+Demo Lending
+```
+
+只要这条路径完整跑通，Demo 就成立。
+
+---
+
+# 22. 第一版产品页面
+
+建议至少实现以下页面。
+
+## Page 1
+
+Home / Wallet Assessment
+
+功能：
+
+```text
+输入 Wallet Address
+
+选择 Wallet Type
+
+Submit
+```
+
+---
+
+## Page 2
+
+Analysis Page
+
+展示：
+
+```text
+Analyzing Wallet
+
+Fetching Blockchain Data
+
+Checking Lending History
+
+Verifying Evidence
+```
+
+---
+
+## Page 3
+
+Wallet Profile
+
+展示：
+
+```text
+Wallet Information
+
+Lending History
+
+Verified Evidence
+
+Assessment Status
+```
+
+---
+
+## Page 4
+
+Assessment Result
+
+展示：
+
+```text
+Reputation Score
+
+Risk Level
+
+Suggested Credit Limit
+
+Suggested APR
+
+Suggested Collateral Ratio
+
+Reviewer Notes
+```
+
+---
+
+## Page 5
+
+Admin Dashboard
+
+展示：
+
+```text
+Pending Assessments
+
+Reviewed Assessments
+
+Wallet Details
+
+Manual Review Form
+```
+
+---
+
+# 23. 项目长期方向
+
+V1：
+
+```text
+自动收集数据
++
+人工评分
+```
+
+V2：
+
+```text
+规则引擎生成 Suggested Score
++
+人工确认
+```
+
+V3：
+
+```text
+自动风险模型
++
+高风险案件人工审核
+```
+
+V4：
+
+```text
+RWA Integration
++
+Identity Attestation
++
+Cross-chain Reputation
+```
+
+最终可以形成：
+
+```text
+Cross-chain Reputation Infrastructure
+```
+
+服务于：
+
+```text
+DeFi Lending
+
+RWA Lending
+
+AI Agents
+
+Business Credit
+
+DAO Credit
+```
+
+---
+
+# 24. 项目一句话介绍
+
+中文：
+
+**一个基于可验证跨链历史行为的链上信誉评估协议，为 DeFi、RWA 和 AI Agent 的低抵押借贷提供风险参考。**
+
+英文：
+
+**A verifiable cross-chain reputation and underwriting layer for DeFi, RWA, and AI-agent lending.**
+
+---
+
+# 25. MVP 核心理念
+
+```text
+Wallet behavior creates reputation.
+
+Reputation becomes financial capital.
+
+Verified reputation can reduce collateral requirements.
+```
+
+系统最终希望探索：
+
+**一个长期维护良好链上历史的钱包，是否可以将自己的 Reputation Capital 转换成更好的金融条件。**
