@@ -61,21 +61,6 @@ type EthereumWindow = Window & {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8787';
 
-const previewProfile: WalletProfile = {
-  wallet: { address: '', walletType: 'PERSONAL', firstSeen: '2023-04-18T08:00:00Z', lastActive: '2026-09-07T03:18:00Z' },
-  metrics: { ethBalance: '18.42', stablecoinBalance: '42650', transactionCount: 4832, activeDays: 629, totalBorrowed: '286000', totalRepaid: '271400', outstandingDebt: '14600' },
-  latestRequest: { status: 'APPROVED' },
-};
-
-const previewResult: AssessmentResult = {
-  assessment: { reputationScore: 862, riskLevel: 'LOW', creditLimitUsdMinor: 1500000, aprBps: 850, collateralBps: 7000, reviewerNotes: 'Strong repayment history with consistent wallet activity and no liquidation events.' },
-  attestations: [
-    { id: 1, sourceTxHash: '0x79aa5036d85b93ff0ad8c3b17d0829221d920bd6', eventType: 'BORROW', proofStatus: 'VERIFIED', verifiedAt: '2026-09-05T06:31:00Z' },
-    { id: 2, sourceTxHash: '0x92cd3417a290f15dd1cbaf7627c9e85c142061b0', eventType: 'REPAY', proofStatus: 'VERIFIED', verifiedAt: '2026-08-28T11:14:00Z' },
-    { id: 3, sourceTxHash: '0x30ea492ae250e15b83b22bf85fdf9b93cc836128', eventType: 'REPAY', proofStatus: 'VERIFIED', verifiedAt: '2026-08-16T09:42:00Z' },
-  ],
-};
-
 function shorten(address: string) {
   return `${address.slice(0, 8)}…${address.slice(-6)}`;
 }
@@ -97,7 +82,7 @@ export default function WalletScorePage() {
   const [result, setResult] = useState<AssessmentResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
-  const [preview, setPreview] = useState(false);
+  const [source, setSource] = useState<'connected' | 'lookup' | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   const loadWallet = useCallback(async (walletAddress: string) => {
@@ -110,11 +95,10 @@ export default function WalletScorePage() {
       const assessmentData = assessmentResponse.ok ? await assessmentResponse.json() as AssessmentResult : { assessment: null, attestations: [] };
       setProfile(walletData);
       setResult(assessmentData);
-      setPreview(false);
     } catch {
-      setProfile({ ...previewProfile, wallet: { ...previewProfile.wallet!, address: walletAddress } });
-      setResult(previewResult);
-      setPreview(true);
+      setProfile({ wallet: { address: walletAddress, walletType: 'PERSONAL', firstSeen: null, lastActive: null }, metrics: null, latestRequest: null });
+      setResult({ assessment: null, attestations: [] });
+      setMessage('Live wallet data could not be loaded. The backend may be unavailable or this address has not been analyzed.');
     } finally {
       setLoading(false);
     }
@@ -123,16 +107,16 @@ export default function WalletScorePage() {
   useEffect(() => {
     const saved = window.localStorage.getItem('veritas_wallet_address') ?? '';
     setAddress(saved);
-    if (saved) void loadWallet(saved);
+    if (saved) { setSource('connected'); void loadWallet(saved); }
     else setLoading(false);
   }, [loadWallet]);
 
   useEffect(() => {
     const status = profile?.latestRequest?.status;
-    if (!address || preview || !status || !['PENDING', 'ANALYZING'].includes(status)) return;
+    if (!address || !status || !['PENDING', 'ANALYZING'].includes(status)) return;
     const timer = window.setInterval(() => void loadWallet(address), 4000);
     return () => window.clearInterval(timer);
-  }, [address, loadWallet, preview, profile?.latestRequest?.status]);
+  }, [address, loadWallet, profile?.latestRequest?.status]);
 
   const connectWallet = async () => {
     const ethereum = (window as EthereumWindow).ethereum;
@@ -146,6 +130,7 @@ export default function WalletScorePage() {
       if (!account) return;
       window.localStorage.setItem('veritas_wallet_address', account);
       setAddress(account);
+      setSource('connected');
       setMessage(null);
       await loadWallet(account);
     } catch {
@@ -166,10 +151,9 @@ export default function WalletScorePage() {
       if (!response.ok) throw new Error();
       setResult((current) => ({ ...current, assessment: null }));
       setProfile((current) => current ? { ...current, latestRequest: { status: 'PENDING' } } : current);
-      setPreview(false);
       setMessage('Your update request was submitted for review.');
     } catch {
-      setMessage('Preview mode: connect the backend to submit a new review request.');
+      setMessage('The review request could not be submitted because the backend is unavailable.');
     } finally {
       setUpdating(false);
     }
@@ -177,7 +161,13 @@ export default function WalletScorePage() {
 
   const logout = () => {
     window.localStorage.removeItem('veritas_wallet_address');
-    window.location.href = '/';
+    setAddress('');
+    setLookupAddress('');
+    setProfile(null);
+    setResult(null);
+    setSource(null);
+    setMessage(null);
+    setLoading(false);
   };
 
   const lookupWallet = async () => {
@@ -188,6 +178,7 @@ export default function WalletScorePage() {
     }
     setMessage(null);
     setAddress(candidate);
+    setSource('lookup');
     await loadWallet(candidate);
   };
 
@@ -196,10 +187,11 @@ export default function WalletScorePage() {
   const transactions = result?.attestations ?? [];
 
   if (!address && !loading) {
-    return <main className="wallet-score-site wallet-score-empty">
-      <a className="client-brand" href="/"><span><Sparkles /></span>VERITAS</a>
+    return <main className="wallet-score-site">
+      <header className="score-header"><a className="client-brand" href="/"><span><Sparkles /></span>VERITAS</a><nav><a href="/">Home</a><a href="/submit-wallet">Submit wallet</a><a className="nav-current" href="/my-wallet">Wallet score</a></nav><div /></header>
+      <section className="wallet-score-empty">
       <div className="empty-wallet-orb"><Wallet /></div>
-      <Badge variant="outline">MY WALLET SCORE</Badge>
+      <Badge variant="outline">WALLET SCORE</Badge>
       <h1>Connect your wallet to see your score.</h1>
       <p>Your score, review status, and verified transaction activity will appear here.</p>
       {message && <div className="wallet-page-message">{message}</div>}
@@ -210,27 +202,28 @@ export default function WalletScorePage() {
         <div><Input value={lookupAddress} onChange={(event) => setLookupAddress(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void lookupWallet(); }} placeholder="0x..." autoComplete="off" spellCheck={false} /><Button variant="outline" onClick={() => void lookupWallet()}>View score</Button></div>
       </div>
       <a href="/">Return home</a>
+      </section>
     </main>;
   }
 
   return <main className="wallet-score-site">
     <header className="score-header">
       <a className="client-brand" href="/"><span><Sparkles /></span>VERITAS</a>
-      <nav><a href="/">Home</a><a href="#transactions">Transactions</a></nav>
+      <nav><a href="/">Home</a><a href="/submit-wallet">Submit wallet</a><a className="nav-current" href="/my-wallet">Wallet score</a></nav>
       <div><Button variant="outline" onClick={logout}><LogOut />Log out</Button></div>
     </header>
 
     <section className="score-hero">
       <div className="score-hero-glow" />
-      <div className="score-account"><Badge variant="outline"><span />{preview ? 'PREVIEW DATA' : 'CONNECTED WALLET'}</Badge><strong>{address ? shorten(address) : 'Loading wallet…'}</strong></div>
+      <div className="score-account"><Badge variant="outline"><span />{source === 'lookup' ? 'LOOKED UP WALLET' : 'CONNECTED WALLET'}</Badge><strong>{address ? shorten(address) : 'Loading wallet…'}</strong></div>
       <div className={`score-orb ${loading ? 'score-orb-loading' : ''}`} style={{ '--score-angle': `${((score ?? 0) / 1000) * 360}deg` } as React.CSSProperties}>
         <div className="score-orb-core"><span>WALLET SCORE</span><strong>{loading ? '•••' : score ?? '—'}</strong><small>/ 1000</small></div>
         <i className="orbital-dot" />
       </div>
       <div className="score-summary">
         <Badge className={score ? 'score-approved' : 'score-pending'}>{score ? <BadgeCheck /> : <Clock3 />}{score ? `${result?.assessment?.riskLevel} RISK` : status?.replaceAll('_', ' ') ?? 'NOT ASSESSED'}</Badge>
-        <h1>{score ? 'Your reputation is ready.' : 'Your score is being reviewed.'}</h1>
-        <p>{score ? result?.assessment?.reviewerNotes : 'We will update this page after the assessment team reviews your latest wallet evidence.'}</p>
+        <h1>{score ? 'Your reputation is ready.' : status ? 'Your score is being reviewed.' : 'No score is available yet.'}</h1>
+        <p>{score ? result?.assessment?.reviewerNotes : status ? 'We will update this page after the assessment team reviews the latest wallet evidence.' : 'Submit this wallet for assessment after the live backend connection is available.'}</p>
         <div className="score-actions"><Button onClick={() => void updateScore()} disabled={updating}><RefreshCw className={updating ? 'animate-spin' : ''} />Update score</Button><Button variant="outline" onClick={logout}><LogOut />Log out</Button></div>
         {message && <div className="wallet-page-message">{message}</div>}
       </div>
