@@ -1,5 +1,8 @@
 import { eq } from "drizzle-orm";
-import { keccak256, stringToHex, type Hash } from "viem";
+import { blockProver, chainInfo, proofProvider } from "@gluwa/usc-sdk";
+import { JsonRpcProvider } from "ethers";
+import { type Hash, type Hex } from "viem";
+import { config } from "../config.js";
 import { db } from "../db/client.js";
 import {
   attestations,
@@ -32,14 +35,10 @@ export interface AttestationRecord {
 /**
  * AttestcoinClient — the "Verification Layer" boundary.
  *
- * Records evidence locally, then forwards it to the on-chain
- * `ReputationRegistry.submitEvidence`, which checks the proof against the
- * Attestcoin verifier before storing it. With the current MockAttestcoinVerifier
- * (verify always returns true) the demo works with placeholder proofs.
- *
- * TODO(attestcoin): the real Creditcoin precompile requires a genuine Merkle
- * inclusion proof + continuity proof produced by an Attestcoin node. Until that
- * is wired up, `encodedTx` is the source tx hash and both proofs are empty.
+ * Records evidence locally, requests a genuine inclusion + continuity proof
+ * from Creditcoin's proof builder, checks it against the native block-prover
+ * precompile, then forwards the same proof to ReputationRegistry for atomic
+ * verification and evidence recording.
  */
 export class AttestcoinClient {
   constructor(
@@ -64,15 +63,61 @@ export class AttestcoinClient {
     }
 
     try {
-      const chainKey = keccak256(stringToHex(`ethereum:${evidence.chainId}`));
+      const provider = new JsonRpcProvider(config.CREDITCOIN_RPC_URL);
+      const chainProvider = new chainInfo.PrecompileChainInfoProvider(provider as never);
+      const supported = await chainProvider.getSupportedChains();
+      const sourceChain = supported.find((chain) => chain.chainId === evidence.chainId);
+      if (!sourceChain) {
+        throw new Error(`Source chain ${evidence.chainId} is not supported by Attestcoin`);
+      }
+
+      const latest = await chainProvider.getLatestAttestedHeightAndHash(sourceChain.chainKey);
+      if (!latest.exists || latest.height < Number(evidence.blockHeight)) {
+        console.warn(
+          `Source block ${evidence.blockHeight} is not attested yet (latest ${latest.height})`,
+        );
+        return { id: row.id, proofStatus: row.proofStatus, onchainTxHash: null };
+      }
+
+      const builder = new proofProvider.service.ProofBuilder(
+        sourceChain.chainKey,
+        config.CREDITCOIN_PROOF_BUILDER_URL,
+        60_000,
+      );
+      const proofResult = await builder.getProof(evidence.sourceTxHash);
+      if (!proofResult.success || !proofResult.data) {
+        throw new Error(proofResult.error ?? "Attestcoin proof builder returned no proof");
+      }
+      const proof = proofResult.data;
+
+      const nativeVerifier = new blockProver.PrecompileBlockProver(provider as never);
+      const verified = await nativeVerifier.verifySingle(
+        proof.chainKey,
+        proof.headerNumber,
+        proof.txBytes,
+        proof.merkleProof,
+        proof.continuityProof,
+      );
+      if (!verified) throw new Error("Creditcoin native verifier rejected the proof");
+
       const txHash = await this.registry.submitEvidence(
         evidence.walletAddress as Hash,
         {
-          chainKey,
-          blockHeight: evidence.blockHeight,
-          encodedTx: evidence.sourceTxHash as Hash,
-          merkleProof: "0x",
-          continuityProof: "0x",
+          chainKey: BigInt(proof.chainKey),
+          blockHeight: BigInt(proof.headerNumber),
+          sourceTxHash: evidence.sourceTxHash as Hash,
+          encodedTx: proof.txBytes as Hex,
+          merkleProof: {
+            root: proof.merkleProof.root as Hash,
+            siblings: proof.merkleProof.siblings.map((sibling) => ({
+              hash: sibling.hash as Hash,
+              isLeft: sibling.isLeft,
+            })),
+          },
+          continuityProof: {
+            lowerEndpointDigest: proof.continuityProof.lowerEndpointDigest as Hash,
+            roots: proof.continuityProof.roots as Hash[],
+          },
           eventType: EVENT_TYPE_LABEL[evidence.eventType],
         },
       );
@@ -85,7 +130,11 @@ export class AttestcoinClient {
       return { id: row.id, proofStatus: "VERIFIED", onchainTxHash: txHash };
     } catch (err) {
       console.warn(`submitEvidence (${EVENT_TYPE_LABEL[evidence.eventType]}) failed:`, err);
-      return { id: row.id, proofStatus: row.proofStatus, onchainTxHash: null };
+      await db
+        .update(attestations)
+        .set({ proofStatus: "FAILED" })
+        .where(eq(attestations.id, row.id));
+      return { id: row.id, proofStatus: "FAILED", onchainTxHash: null };
     }
   }
 

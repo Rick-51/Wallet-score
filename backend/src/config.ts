@@ -8,7 +8,10 @@ const envSchema = z.object({
   DATABASE_PATH: z.string().min(1).default("./data/reputation.db"),
 
   NETWORK: z.enum(["sepolia", "ethereum", "mainnet"]).default("sepolia"),
-  RPC_URL_SEPOLIA: z.string().min(1).default("https://rpc.sepolia.org"),
+  RPC_URL_SEPOLIA: z
+    .string()
+    .min(1)
+    .default("https://ethereum-sepolia-rpc.publicnode.com"),
   RPC_URL_ETHEREUM: z.string().min(1).default("https://eth.llamarpc.com"),
 
   // Optional Etherscan API key — enables transaction-history metrics.
@@ -21,14 +24,18 @@ const envSchema = z.object({
     .string()
     .min(1)
     .default("0x6Ae43d3271ff6888e7Fc43Fd7321a503ff738951"),
-  AAVE_START_BLOCK: z.coerce.bigint().default(0n),
-  LOG_CHUNK: z.coerce.bigint().default(5000n),
+  AAVE_START_BLOCK: z.coerce.bigint().default(3975368n),
+  LOG_CHUNK: z.coerce.bigint().default(50000n),
 
   // ---- Creditcoin testnet / on-chain contracts ----
   CREDITCOIN_RPC_URL: z
     .string()
     .min(1)
     .default("https://rpc.cc3-testnet.creditcoin.network"),
+  CREDITCOIN_PROOF_BUILDER_URL: z
+    .string()
+    .url()
+    .default("https://prover.cc3-testnet.creditcoin.network"),
   // Signer for on-chain writes (submitAssessment / submitEvidence / review).
   // Leave empty to disable on-chain sync (backend runs read-only, local only).
   CREDITCOIN_PRIVATE_KEY: z.string().optional(),

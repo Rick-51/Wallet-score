@@ -4,23 +4,30 @@
   "explorer": "https://creditcoin-testnet.blockscout.com",
   "deployer": "0x9a8898348472be7e89bb2ddd55f99be8645e26f3",
   "contracts": {
-    "MockAttestcoinVerifier": {
-      "address": "0x813f606225df4f359b43b56ae2007ae3daa96e22",
-      "abi": "artifacts/contracts/mocks/MockAttestcoinVerifier.sol/MockAttestcoinVerifier.json"
+    "AttestcoinNativeVerifier": {
+      "address": "0x0000000000000000000000000000000000000FD2",
+      "abi": "@gluwa/usc-contracts/contracts/write-ability/INativeQueryVerifier.sol"
     },
     "ReputationRegistry": {
-      "address": "0x34e02c180fadeee3523fb985b4a624264f5c7b63",
+      "address": "0x8710475112a43c9df03d5737f3d9a8cfc3249753",
       "abi": "artifacts/contracts/ReputationRegistry.sol/ReputationRegistry.json"
     },
     "DemoLending": {
-      "address": "0xe0c480ee6831a9a8fc2c48c3066b8f9be954034b",
+      "address": "0xa310d039865dfb8acae2ffaebdf74748429386e4",
       "abi": "artifacts/contracts/DemoLending.sol/DemoLending.json"
+    }
+  },
+  "sourceChains": {
+    "sepolia": {
+      "chainId": 11155111,
+      "attestcoinChainKey": 1,
+      "aavePool": "0x6Ae43d3271ff6888e7Fc43Fd7321a503ff738951"
     }
   },
   "notes": {
     "owner": "deployer (0x9a8898348472be7e89bb2ddd55f99be8645e26f3)",
-    "oracle": "deployer by default — call setOracle() if the backend worker uses a different account",
-    "reviewer": "none added yet — call addReviewer() to grant a human reviewer",
-    "attestcoin": "MockAttestcoinVerifier (always returns true) — swap for the real precompile for production"
+    "oracle": "deployer",
+    "reviewer": "deployer",
+    "attestcoin": "Creditcoin native Block Prover precompile (0xFD2)"
   }
 }

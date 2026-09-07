@@ -140,13 +140,17 @@ export async function fetchAaveMetrics(address: Address): Promise<AaveMetrics> {
     const toBlock = await client.getBlockNumber();
     const fromBlock = config.AAVE_START_BLOCK;
 
-    // Borrow: `user` is NOT indexed, so fetch all and filter client-side.
-    const borrowLogs = (
-      await paginatedLogs(client, pool, BORROW_EVENT, undefined, fromBlock, toBlock)
-    ).filter((l) => {
-      const user = l.args.user as string | undefined;
-      return user?.toLowerCase() === address.toLowerCase();
-    });
+    // `onBehalfOf` is the account that owns the debt and is indexed, so it is
+    // both more credit-relevant and dramatically cheaper to query than scanning
+    // every Borrow event and filtering the non-indexed caller (`user`).
+    const borrowLogs = await paginatedLogs(
+      client,
+      pool,
+      BORROW_EVENT,
+      { onBehalfOf: address },
+      fromBlock,
+      toBlock,
+    );
 
     // Repay & LiquidationCall: `user` IS indexed → filter at the RPC.
     const repayLogs = await paginatedLogs(

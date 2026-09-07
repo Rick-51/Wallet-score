@@ -49,11 +49,18 @@ interface Deployment {
 }
 
 export interface OnchainEvidence {
-  chainKey: Hash;
+  chainKey: bigint;
   blockHeight: bigint;
-  encodedTx: Hash;
-  merkleProof: Hash;
-  continuityProof: Hash;
+  sourceTxHash: Hash;
+  encodedTx: `0x${string}`;
+  merkleProof: {
+    root: Hash;
+    siblings: Array<{ hash: Hash; isLeft: boolean }>;
+  };
+  continuityProof: {
+    lowerEndpointDigest: Hash;
+    roots: Hash[];
+  };
   eventType: string;
 }
 
@@ -132,6 +139,7 @@ export class RegistryClient {
       wallet,
       evidence.chainKey,
       evidence.blockHeight,
+      evidence.sourceTxHash,
       evidence.encodedTx,
       evidence.merkleProof,
       evidence.continuityProof,
@@ -192,7 +200,12 @@ export class RegistryClient {
       functionName,
       args,
     });
-    return hash as Hash;
+    const txHash = hash as Hash;
+    const receipt = await this.publicClient.waitForTransactionReceipt({ hash: txHash });
+    if (receipt.status !== "success") {
+      throw new Error(`${functionName} reverted in transaction ${txHash}`);
+    }
+    return txHash;
   }
 }
 

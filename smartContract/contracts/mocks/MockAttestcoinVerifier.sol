@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.34;
 
-import {IAttestcoinVerifier} from "../IAttestcoinVerifier.sol";
+import {INativeQueryVerifier} from "@gluwa/usc-contracts/contracts/write-ability/INativeQueryVerifier.sol";
 
 /**
  * @title MockAttestcoinVerifier
@@ -9,7 +9,7 @@ import {IAttestcoinVerifier} from "../IAttestcoinVerifier.sol";
  *         Lets tests toggle the verification result to exercise both the
  *         success and failure branches without the real Creditcoin precompile.
  */
-contract MockAttestcoinVerifier is IAttestcoinVerifier {
+contract MockAttestcoinVerifier is INativeQueryVerifier {
   bool public result = true;
 
   function setResult(bool result_) external {
@@ -17,11 +17,11 @@ contract MockAttestcoinVerifier is IAttestcoinVerifier {
   }
 
   function verify(
-    bytes32,
-    uint256,
+    uint64,
+    uint64,
     bytes calldata,
-    bytes calldata,
-    bytes calldata
+    MerkleProof calldata,
+    ContinuityProof calldata
   ) external view override returns (bool) {
     return result;
   }

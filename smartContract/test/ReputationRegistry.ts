@@ -2,10 +2,14 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { network } from "hardhat";
+import { encodeAbiParameters, keccak256, padHex, parseAbiParameters, stringToHex } from "viem";
 
 // viem types `bytes` / `bytes32` args as `0x${string}` template literals.
 type Hex = `0x${string}`;
-const CHAIN_KEY = ("0x" + "ab".repeat(32)) as Hex;
+const CHAIN_KEY = 1n;
+const POOL = "0x0000000000000000000000000000000000005555" as const;
+const EMPTY_MERKLE = { root: `0x${"00".repeat(32)}` as Hex, siblings: [] };
+const EMPTY_CONTINUITY = { lowerEndpointDigest: `0x${"00".repeat(32)}` as Hex, roots: [] };
 
 // Solidity enum values mirrored as numbers (enums encode as uint8).
 const WalletType = { PERSONAL: 0, AI_AGENT: 1, BUSINESS: 2, DAO: 3 } as const;
@@ -34,6 +38,7 @@ describe("ReputationRegistry + DemoLending", async function () {
     await registry.write.addReviewer([reviewer.account.address], {
       account: owner.account,
     });
+    await registry.write.setAavePool([CHAIN_KEY, POOL], { account: owner.account });
 
     return { verifier, registry, lending };
   }
@@ -75,12 +80,35 @@ describe("ReputationRegistry + DemoLending", async function () {
       { account: alice.account },
     );
 
+    const repayData = encodeAbiParameters(parseAbiParameters("uint256 amount, bool useATokens"), [100n, false]);
+    const receipt = encodeAbiParameters(
+      parseAbiParameters("uint8 status, uint64 gasUsed, (address address_, bytes32[] topics, bytes data)[] logs, bytes logsBloom"),
+      [1, 90_000n, [{
+        address_: POOL,
+        topics: [
+          keccak256(stringToHex("Repay(address,address,address,uint256,bool)")),
+          padHex("0x6666", { size: 32 }),
+          padHex(alice.account.address, { size: 32 }),
+          padHex(alice.account.address, { size: 32 }),
+        ],
+        data: repayData,
+      }], "0x"],
+    );
+    const common = encodeAbiParameters(
+      parseAbiParameters("uint64 nonce, uint64 gasLimit, address from, bool toIsNull, address to, uint256 value, bytes data"),
+      [1n, 100_000n, alice.account.address, false, POOL, 0n, "0x"],
+    );
+    const legacy = encodeAbiParameters(
+      parseAbiParameters("uint128 gasPrice, uint256 v, bytes32 r, bytes32 s"),
+      [1n, 27n, `0x${"00".repeat(32)}`, `0x${"00".repeat(32)}`],
+    );
     const evidence = {
       chainKey: CHAIN_KEY,
       blockHeight: 19_000_000n,
-      encodedTx: "0xc0ffee" as Hex,
-      merkleProof: "0xbeef" as Hex,
-      continuityProof: "0x1234" as Hex,
+      sourceTxHash: keccak256(stringToHex("source transaction")),
+      encodedTx: encodeAbiParameters(parseAbiParameters("uint8 txType, bytes[] chunks"), [0, [common, legacy, receipt]]),
+      merkleProof: EMPTY_MERKLE,
+      continuityProof: EMPTY_CONTINUITY,
       eventType: "aave:repay",
     };
 
@@ -91,6 +119,7 @@ describe("ReputationRegistry + DemoLending", async function () {
           alice.account.address,
           evidence.chainKey,
           evidence.blockHeight,
+          evidence.sourceTxHash,
           evidence.encodedTx,
           evidence.merkleProof,
           evidence.continuityProof,
@@ -106,6 +135,7 @@ describe("ReputationRegistry + DemoLending", async function () {
         alice.account.address,
         evidence.chainKey,
         evidence.blockHeight,
+        evidence.sourceTxHash,
         evidence.encodedTx,
         evidence.merkleProof,
         evidence.continuityProof,
@@ -132,9 +162,10 @@ describe("ReputationRegistry + DemoLending", async function () {
           alice.account.address,
           CHAIN_KEY,
           1n,
+          keccak256(stringToHex("failed")),
           "0xaa",
-          "0xbb",
-          "0xcc",
+          EMPTY_MERKLE,
+          EMPTY_CONTINUITY,
           "aave:borrow",
         ],
         { account: oracle.account },

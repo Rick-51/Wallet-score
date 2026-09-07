@@ -1,57 +1,33 @@
-# Sample Hardhat 3 Project (`node:test` and `viem`)
+# Veritas Credit Reputation Contracts
 
-This project showcases a Hardhat 3 project using the native Node.js test runner (`node:test`) and the `viem` library for Ethereum interactions.
+The contracts run on Creditcoin and use Attestcoin to verify selected source-chain
+transactions before recording them as wallet reputation evidence.
 
-To learn more about Hardhat 3, please visit the [Getting Started guide](https://hardhat.org/docs/getting-started#getting-started-with-hardhat-3). To share your feedback, join our [Hardhat 3](https://hardhat.org/hardhat3-telegram-group) Telegram group or [open an issue](https://github.com/NomicFoundation/hardhat/issues/new) in our GitHub issue tracker.
+## Testnet deployment
 
-## Project Overview
+- Creditcoin Testnet chain ID: `102031`
+- Native Attestcoin block-prover precompile: `0x0000000000000000000000000000000000000FD2`
+- Deployment addresses: `deployments/creditcoin-testnet.json`
+- Supported MVP source: Sepolia (`Attestcoin chain key 1`)
+- Verified protocol: Aave V3 Sepolia Pool
 
-This example project includes:
+`ReputationRegistry.submitEvidence` performs two checks in one Creditcoin
+transaction:
 
-- A simple Hardhat configuration file.
-- Foundry-compatible Solidity unit tests.
-- TypeScript integration tests using [`node:test`](nodejs.org/api/test.html), the new Node.js native test runner, and [`viem`](https://viem.sh/).
-- Examples demonstrating how to connect to different types of networks, including locally simulating OP mainnet.
+1. The native precompile verifies the Merkle inclusion and continuity proofs.
+2. The registry decodes the proved receipt and checks that it contains the
+   requested Aave event for the submitted wallet.
 
-## Usage
+The mock verifier remains available only for local unit tests.
 
-### Running Tests
-
-To run all the tests in the project, execute the following command:
-
-```shell
-npx hardhat test
-```
-
-You can also selectively run the Solidity or `node:test` tests:
+## Commands
 
 ```shell
-npx hardhat test solidity
-npx hardhat test nodejs
+npm run build
+npm test
+npm run deploy:creditcoin -- --network creditcoinTestnet
 ```
 
-### Make a deployment to Sepolia
-
-This project includes an example Ignition module to deploy the contract. You can deploy this module to a locally simulated chain or to Sepolia.
-
-To run the deployment to a local chain:
-
-```shell
-npx hardhat ignition deploy ignition/modules/Counter.ts
-```
-
-To run the deployment to Sepolia, you need an account with funds to send the transaction. The provided Hardhat configuration includes a Configuration Variable called `SEPOLIA_PRIVATE_KEY`, which you can use to set the private key of the account you want to use.
-
-You can set the `SEPOLIA_PRIVATE_KEY` variable using the `hardhat-keystore` plugin or by setting it as an environment variable.
-
-To set the `SEPOLIA_PRIVATE_KEY` config variable using `hardhat-keystore`:
-
-```shell
-npx hardhat keystore set SEPOLIA_PRIVATE_KEY
-```
-
-After setting the variable, you can run the deployment with the Sepolia network:
-
-```shell
-npx hardhat ignition deploy --network sepolia ignition/modules/Counter.ts
-```
+The deployment command requires `CREDITCOIN_PRIVATE_KEY` in `.env`, deploys the
+registry and demo lending contracts, configures the Sepolia Aave pool, and writes
+the resulting addresses to `deployments/creditcoin-testnet.json`.

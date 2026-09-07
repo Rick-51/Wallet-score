@@ -1,9 +1,7 @@
 import { config } from "../config.js";
 
-function apiBase(network: string): string {
-  return network === "sepolia"
-    ? "https://api-sepolia.etherscan.io/api"
-    : "https://api.etherscan.io/api";
+function chainId(network: string): string {
+  return network === "sepolia" ? "11155111" : "1";
 }
 
 interface EtherscanTx {
@@ -29,26 +27,29 @@ const EMPTY: TxHistory = {
 };
 
 async function txlist(
-  base: string,
   address: string,
   sort: "asc" | "desc",
 ): Promise<EtherscanTx[]> {
   const params = new URLSearchParams({
+    chainid: chainId(config.NETWORK),
     module: "account",
     action: "txlist",
     address,
     startblock: "0",
     endblock: "99999999",
     page: "1",
-    offset: "10000",
+    offset: "1000",
     sort,
     apikey: config.ETHERSCAN_API_KEY!,
   });
-  const res = await fetch(`${base}?${params.toString()}`);
+  const res = await fetch(`https://api.etherscan.io/v2/api?${params.toString()}`);
   const json = (await res.json()) as {
     status: string;
     result: EtherscanTx[] | string;
   };
+  if (json.status === "0" && typeof json.result === "string" && /no transactions/i.test(json.result)) {
+    return [];
+  }
   if (json.status !== "1" || !Array.isArray(json.result)) {
     throw new Error(
       `Etherscan error: ${typeof json.result === "string" ? json.result : json.status}`,
@@ -60,7 +61,8 @@ async function txlist(
 /**
  * Optional transaction-history source. Without an `ETHERSCAN_API_KEY` (or if the
  * call fails) this returns nulls so the pipeline still completes — these fields
- * are approximate, indexer-derived values capped at 10,000 transactions.
+ * are approximate, indexer-derived values capped at 1,000 transactions on the
+ * current Etherscan free tier.
  */
 export async function fetchTxHistory(address: string): Promise<TxHistory> {
   if (!config.ETHERSCAN_API_KEY) {
@@ -68,10 +70,9 @@ export async function fetchTxHistory(address: string): Promise<TxHistory> {
     return EMPTY;
   }
   try {
-    const base = apiBase(config.NETWORK);
     const [desc, asc] = await Promise.all([
-      txlist(base, address, "desc"),
-      txlist(base, address, "asc"),
+      txlist(address, "desc"),
+      txlist(address, "asc"),
     ]);
 
     const toDate = (t: EtherscanTx) => new Date(Number(t.timeStamp) * 1000);

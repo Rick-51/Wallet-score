@@ -1,4 +1,10 @@
 import { network } from "hardhat";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+
+const NATIVE_ATTESTCOIN_VERIFIER = "0x0000000000000000000000000000000000000FD2";
+const SEPOLIA_CHAIN_KEY = 1n;
+const AAVE_POOL_SEPOLIA = "0x6Ae43d3271ff6888e7Fc43Fd7321a503ff738951";
 
 const { viem } = await network.create({ network: "creditcoinTestnet" });
 
@@ -14,18 +20,17 @@ console.log("Network  : Creditcoin Testnet (chainId 102031)");
 console.log("Deployer :", deployer.account.address);
 console.log("");
 
-// 1. Attestcoin verifier — the demo deploys a mock. For production, swap
-//    `verifier.address` below for the real Attestcoin precompile on Creditcoin.
-const verifier = await viem.deployContract("MockAttestcoinVerifier");
-console.log("MockAttestcoinVerifier :", verifier.address);
-
-// 2. Reputation registry (owner = deployer = oracle by default).
+// 1. Reputation registry (owner = deployer = oracle by default) wired directly
+//    to Creditcoin's native Attestcoin block-prover precompile.
 const registry = await viem.deployContract("ReputationRegistry", [
-  verifier.address,
+  NATIVE_ATTESTCOIN_VERIFIER,
 ]);
 console.log("ReputationRegistry     :", registry.address);
 
-// 3. Demo lending.
+await registry.write.setAavePool([SEPOLIA_CHAIN_KEY, AAVE_POOL_SEPOLIA]);
+console.log("Sepolia Aave pool      :", AAVE_POOL_SEPOLIA);
+
+// 2. Demo lending.
 const lending = await viem.deployContract("DemoLending", [registry.address]);
 console.log("DemoLending            :", lending.address);
 
@@ -33,3 +38,48 @@ console.log("");
 console.log("✅ Deployment complete");
 console.log(`   ReputationRegistry: ${registry.address}`);
 console.log(`   DemoLending:        ${lending.address}`);
+
+const deploymentFile = resolve("deployments/creditcoin-testnet.json");
+await mkdir(dirname(deploymentFile), { recursive: true });
+await writeFile(
+  deploymentFile,
+  JSON.stringify(
+    {
+      network: "creditcoinTestnet",
+      chainId: 102031,
+      explorer: "https://creditcoin-testnet.blockscout.com",
+      deployer: deployer.account.address,
+      contracts: {
+        AttestcoinNativeVerifier: {
+          address: NATIVE_ATTESTCOIN_VERIFIER,
+          abi: "@gluwa/usc-contracts/contracts/write-ability/INativeQueryVerifier.sol",
+        },
+        ReputationRegistry: {
+          address: registry.address,
+          abi: "artifacts/contracts/ReputationRegistry.sol/ReputationRegistry.json",
+        },
+        DemoLending: {
+          address: lending.address,
+          abi: "artifacts/contracts/DemoLending.sol/DemoLending.json",
+        },
+      },
+      sourceChains: {
+        sepolia: {
+          chainId: 11155111,
+          attestcoinChainKey: Number(SEPOLIA_CHAIN_KEY),
+          aavePool: AAVE_POOL_SEPOLIA,
+        },
+      },
+      notes: {
+        owner: `deployer (${deployer.account.address})`,
+        oracle: "deployer",
+        reviewer: "deployer",
+        attestcoin: "Creditcoin native Block Prover precompile (0xFD2)",
+      },
+    },
+    null,
+    2,
+  ) + "\n",
+  "utf8",
+);
+console.log(`   Deployment record:  ${deploymentFile}`);

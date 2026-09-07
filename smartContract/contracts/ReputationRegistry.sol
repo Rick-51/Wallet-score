@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.34;
 
-import {IAttestcoinVerifier} from "./IAttestcoinVerifier.sol";
+import {INativeQueryVerifier} from "@gluwa/usc-contracts/contracts/write-ability/INativeQueryVerifier.sol";
+import {EvmV1Decoder} from "@gluwa/usc-contracts/contracts/write-ability/common/EvmV1Decoder.sol";
 
 /**
  * @title ReputationRegistry
@@ -49,9 +50,9 @@ contract ReputationRegistry {
   }
 
   struct Evidence {
-    bytes32 chainKey; // source chain the evidence was verified against
-    uint256 blockHeight; // source-chain block height of the attested tx
-    bytes32 sourceTxHash; // reference hash of the attested transaction
+    uint64 chainKey; // Attestcoin source-chain key (not the EVM chain ID)
+    uint64 blockHeight; // source-chain block height of the attested tx
+    bytes32 sourceTxHash; // explorer reference supplied by the trusted oracle
     string eventType; // e.g. "aave:borrow" | "aave:repay" | "liquidation"
     uint64 verifiedAt; // timestamp the evidence was verified on Creditcoin
   }
@@ -75,7 +76,9 @@ contract ReputationRegistry {
   address public owner;
   address public oracle;
   mapping(address => bool) public reviewers;
-  IAttestcoinVerifier public attestcoinVerifier;
+  INativeQueryVerifier public immutable attestcoinVerifier;
+  mapping(uint64 => address) public aavePools;
+  mapping(bytes32 => bool) public submittedEvidence;
 
   mapping(address => Assessment) private _assessments;
   mapping(address => uint256) public evidenceCount;
@@ -88,8 +91,8 @@ contract ReputationRegistry {
   event EvidenceSubmitted(
     address indexed wallet,
     uint256 indexed index,
-    bytes32 chainKey,
-    uint256 blockHeight,
+    uint64 chainKey,
+    uint64 blockHeight,
     bytes32 sourceTxHash,
     string eventType,
     uint64 timestamp
@@ -107,7 +110,7 @@ contract ReputationRegistry {
   event OracleUpdated(address indexed previousOracle, address indexed newOracle);
   event ReviewerAdded(address indexed reviewer);
   event ReviewerRemoved(address indexed reviewer);
-  event AttestcoinVerifierUpdated(address indexed previous, address indexed updated);
+  event AavePoolUpdated(uint64 indexed chainKey, address indexed pool);
   event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
   // --- Modifiers -------------------------------------------------------------
@@ -129,7 +132,8 @@ contract ReputationRegistry {
 
   // --- Setup -----------------------------------------------------------------
 
-  constructor(IAttestcoinVerifier attestcoinVerifier_) {
+  constructor(INativeQueryVerifier attestcoinVerifier_) {
+    require(address(attestcoinVerifier_) != address(0), "Zero verifier");
     owner = msg.sender;
     oracle = msg.sender;
     attestcoinVerifier = attestcoinVerifier_;
@@ -186,21 +190,26 @@ contract ReputationRegistry {
    */
   function submitEvidence(
     address wallet,
-    bytes32 chainKey,
-    uint256 blockHeight,
+    uint64 chainKey,
+    uint64 blockHeight,
+    bytes32 sourceTxHash,
     bytes calldata encodedTx,
-    bytes calldata merkleProof,
-    bytes calldata continuityProof,
+    INativeQueryVerifier.MerkleProof calldata merkleProof,
+    INativeQueryVerifier.ContinuityProof calldata continuityProof,
     string calldata eventType
   ) external onlyOracle {
     bool verified = attestcoinVerifier.verify(chainKey, blockHeight, encodedTx, merkleProof, continuityProof);
     require(verified, "Attestcoin verification failed");
+    require(!submittedEvidence[sourceTxHash], "Evidence already submitted");
+    require(_matchesAaveEvidence(wallet, chainKey, encodedTx, eventType), "Evidence does not match wallet event");
+
+    submittedEvidence[sourceTxHash] = true;
 
     uint256 index = evidenceCount[wallet];
     _evidence[wallet][index] = Evidence({
       chainKey: chainKey,
       blockHeight: blockHeight,
-      sourceTxHash: keccak256(encodedTx),
+      sourceTxHash: sourceTxHash,
       eventType: eventType,
       verifiedAt: uint64(block.timestamp)
     });
@@ -211,7 +220,7 @@ contract ReputationRegistry {
       index,
       chainKey,
       blockHeight,
-      keccak256(encodedTx),
+      sourceTxHash,
       eventType,
       uint64(block.timestamp)
     );
@@ -299,15 +308,68 @@ contract ReputationRegistry {
     emit ReviewerRemoved(reviewer);
   }
 
-  function setAttestcoinVerifier(IAttestcoinVerifier newVerifier) external onlyOwner {
-    require(address(newVerifier) != address(0), "Zero verifier");
-    emit AttestcoinVerifierUpdated(address(attestcoinVerifier), address(newVerifier));
-    attestcoinVerifier = newVerifier;
+  function setAavePool(uint64 chainKey, address pool) external onlyOwner {
+    require(pool != address(0), "Zero pool");
+    aavePools[chainKey] = pool;
+    emit AavePoolUpdated(chainKey, pool);
   }
 
   function transferOwnership(address newOwner) external onlyOwner {
     require(newOwner != address(0), "Zero owner");
     emit OwnershipTransferred(owner, newOwner);
     owner = newOwner;
+  }
+
+  // --- Verified evidence decoding -------------------------------------------
+
+  bytes32 private constant BORROW_EVENT = keccak256(
+    "Borrow(address,address,address,uint256,uint8,uint256,uint16)"
+  );
+  bytes32 private constant REPAY_EVENT = keccak256(
+    "Repay(address,address,address,uint256,bool)"
+  );
+  bytes32 private constant LIQUIDATION_EVENT = keccak256(
+    "LiquidationCall(address,address,address,uint256,uint256,address,bool)"
+  );
+
+  function _matchesAaveEvidence(
+    address wallet,
+    uint64 chainKey,
+    bytes calldata encodedTx,
+    string calldata eventType
+  ) private view returns (bool) {
+    address pool = aavePools[chainKey];
+    require(pool != address(0), "Aave pool not configured");
+
+    EvmV1Decoder.ReceiptFields memory receipt = EvmV1Decoder.decodeReceiptFields(encodedTx);
+    require(receipt.receiptStatus == 1, "Source transaction failed");
+
+    bytes32 requested = keccak256(bytes(eventType));
+    for (uint256 i; i < receipt.receiptLogs.length; ++i) {
+      EvmV1Decoder.LogEntry memory entry = receipt.receiptLogs[i];
+      if (entry.address_ != pool || entry.topics.length == 0) continue;
+
+      if (requested == keccak256("aave:borrow") && entry.topics[0] == BORROW_EVENT) {
+        (address user, , , ) = abi.decode(entry.data, (address, uint256, uint8, uint256));
+        if (user == wallet) return true;
+      }
+      if (
+        requested == keccak256("aave:repay") &&
+        entry.topics[0] == REPAY_EVENT &&
+        entry.topics.length >= 3 &&
+        _topicAddress(entry.topics[2]) == wallet
+      ) return true;
+      if (
+        requested == keccak256("liquidation") &&
+        entry.topics[0] == LIQUIDATION_EVENT &&
+        entry.topics.length >= 4 &&
+        _topicAddress(entry.topics[3]) == wallet
+      ) return true;
+    }
+    return false;
+  }
+
+  function _topicAddress(bytes32 topic) private pure returns (address) {
+    return address(uint160(uint256(topic)));
   }
 }

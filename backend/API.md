@@ -52,6 +52,9 @@
 ```
 
 - 后端会同时把评估请求提交到链上 `ReputationRegistry`（异步）。
+- 对发现的 Aave 借贷事件，后端会从 Creditcoin Proof Builder 获取真实的
+  Merkle inclusion proof 与 continuity proof；证明会由 Creditcoin 原生
+  Attestcoin verifier 验证，合约随后再校验钱包地址、Aave Pool 和事件类型。
 - 后台 worker 依次：`PENDING → ANALYZING → READY_FOR_REVIEW`。
 
 ### 4.2 查询钱包数据 — `GET /api/wallets/:address`
@@ -95,6 +98,10 @@
 ```
 
 `metrics` 里字段为 `null` 表示该数据尚未采集（未配置 RPC/Etherscan key，或该钱包无此活动）。
+
+普通地址交易统计使用 Etherscan API V2，需要在后端配置
+`ETHERSCAN_API_KEY`。Attestcoin 用于验证已经定位到的关键交易，不负责按
+钱包地址搜索交易历史。
 
 ### 4.3 查询评估结果 — `GET /api/wallets/:address/assessment`
 

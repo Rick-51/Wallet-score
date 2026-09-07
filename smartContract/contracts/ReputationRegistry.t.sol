@@ -3,7 +3,8 @@ pragma solidity ^0.8.34;
 
 import {Test} from "forge-std/Test.sol";
 import {ReputationRegistry} from "./ReputationRegistry.sol";
-import {IAttestcoinVerifier} from "./IAttestcoinVerifier.sol";
+import {INativeQueryVerifier} from "@gluwa/usc-contracts/contracts/write-ability/INativeQueryVerifier.sol";
+import {EvmV1Decoder} from "@gluwa/usc-contracts/contracts/write-ability/common/EvmV1Decoder.sol";
 import {MockAttestcoinVerifier} from "./mocks/MockAttestcoinVerifier.sol";
 
 contract ReputationRegistryTest is Test {
@@ -14,10 +15,13 @@ contract ReputationRegistryTest is Test {
   address reviewer = address(0x2222);
   address alice = address(0x3333);
   address bob = address(0x4444);
+  address pool = address(0x5555);
+  uint64 constant CHAIN_KEY = 1;
 
   function setUp() public {
     verifier = new MockAttestcoinVerifier();
     registry = new ReputationRegistry(verifier);
+    registry.setAavePool(CHAIN_KEY, pool);
     registry.setOracle(oracle);
     registry.addReviewer(reviewer);
   }
@@ -91,19 +95,20 @@ contract ReputationRegistryTest is Test {
   function test_SubmitEvidence() public {
     registry.submitAssessment(alice, ReputationRegistry.WalletType.BUSINESS);
 
-    bytes memory encodedTx = hex"c0ffee";
-    bytes memory merkle = hex"beef";
-    bytes memory cont = hex"1234";
+    bytes memory encodedTx = _repayTx(alice);
+    bytes32 sourceTxHash = keccak256("source transaction");
+    INativeQueryVerifier.MerkleProof memory merkle = _emptyMerkleProof();
+    INativeQueryVerifier.ContinuityProof memory cont = _emptyContinuityProof();
 
     vm.prank(oracle);
-    registry.submitEvidence(alice, bytes32("ethereum"), 19_000_000, encodedTx, merkle, cont, "aave:repay");
+    registry.submitEvidence(alice, CHAIN_KEY, 19_000_000, sourceTxHash, encodedTx, merkle, cont, "aave:repay");
 
     assertEq(registry.evidenceCount(alice), 1);
 
     ReputationRegistry.Evidence memory e = registry.getEvidence(alice, 0);
-    assertEq(e.chainKey, bytes32("ethereum"));
+    assertEq(e.chainKey, CHAIN_KEY);
     assertEq(e.blockHeight, 19_000_000);
-    assertEq(e.sourceTxHash, keccak256(encodedTx));
+    assertEq(e.sourceTxHash, sourceTxHash);
     assertEq(e.eventType, "aave:repay");
     assertGt(e.verifiedAt, 0);
   }
@@ -113,18 +118,67 @@ contract ReputationRegistryTest is Test {
 
     vm.prank(oracle);
     vm.expectRevert(bytes("Attestcoin verification failed"));
-    registry.submitEvidence(alice, bytes32("ethereum"), 1, hex"aa", hex"bb", hex"cc", "aave:borrow");
+    registry.submitEvidence(
+      alice,
+      CHAIN_KEY,
+      1,
+      keccak256("failed"),
+      hex"aa",
+      _emptyMerkleProof(),
+      _emptyContinuityProof(),
+      "aave:borrow"
+    );
   }
 
   function test_SubmitEvidenceRevertsForNonOracle() public {
     vm.prank(alice);
     vm.expectRevert(bytes("Not oracle"));
-    registry.submitEvidence(alice, bytes32("ethereum"), 1, hex"aa", hex"bb", hex"cc", "aave:borrow");
+    registry.submitEvidence(
+      alice,
+      CHAIN_KEY,
+      1,
+      keccak256("unauthorized"),
+      hex"aa",
+      _emptyMerkleProof(),
+      _emptyContinuityProof(),
+      "aave:borrow"
+    );
   }
 
   function test_GetEvidenceRevertsOutOfBounds() public {
     vm.expectRevert(bytes("Index out of bounds"));
     registry.getEvidence(alice, 0);
+  }
+
+  function _emptyMerkleProof() private pure returns (INativeQueryVerifier.MerkleProof memory proof) {
+    proof.root = bytes32(0);
+    proof.siblings = new INativeQueryVerifier.MerkleProofEntry[](0);
+  }
+
+  function _emptyContinuityProof() private pure returns (INativeQueryVerifier.ContinuityProof memory proof) {
+    proof.lowerEndpointDigest = bytes32(0);
+    proof.roots = new bytes32[](0);
+  }
+
+  function _repayTx(address wallet) private view returns (bytes memory) {
+    bytes32[] memory logTopics = new bytes32[](4);
+    logTopics[0] = keccak256("Repay(address,address,address,uint256,bool)");
+    logTopics[1] = bytes32(uint256(uint160(address(0x6666))));
+    logTopics[2] = bytes32(uint256(uint160(wallet)));
+    logTopics[3] = bytes32(uint256(uint160(wallet)));
+
+    EvmV1Decoder.LogEntry[] memory logs = new EvmV1Decoder.LogEntry[](1);
+    logs[0] = EvmV1Decoder.LogEntry({
+      address_: pool,
+      topics: logTopics,
+      data: abi.encode(uint256(100 ether), false)
+    });
+
+    bytes[] memory chunks = new bytes[](3);
+    chunks[0] = abi.encode(uint64(1), uint64(100_000), wallet, false, pool, uint256(0), bytes(""));
+    chunks[1] = abi.encode(uint128(1), uint256(27), bytes32(0), bytes32(0));
+    chunks[2] = abi.encode(uint8(1), uint64(90_000), logs, bytes(""));
+    return abi.encode(uint8(0), chunks);
   }
 
   // --- Underwriting -------------------------------------------------------------
@@ -217,9 +271,8 @@ contract ReputationRegistryTest is Test {
     registry.reviewAssessment(alice, 600, ReputationRegistry.RiskLevel.MEDIUM, 1000, 1000, 8000, "");
   }
 
-  function test_SetAttestcoinVerifier() public {
-    MockAttestcoinVerifier v2 = new MockAttestcoinVerifier();
-    registry.setAttestcoinVerifier(v2);
-    assertEq(address(registry.attestcoinVerifier()), address(v2));
+  function test_SetAavePool() public {
+    registry.setAavePool(3, address(0x7777));
+    assertEq(registry.aavePools(3), address(0x7777));
   }
 }
