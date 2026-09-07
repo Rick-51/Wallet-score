@@ -18,6 +18,7 @@ import {
 import { canonicalAddress, isValidWalletAddress } from "../lib/address.js";
 import { analysisQueue } from "../lib/queue.js";
 import { runAnalysis } from "../services/analyzer.js";
+import { getRegistry } from "../services/registry.js";
 
 const analyzeSchema = z.object({
   walletAddress: z.string().refine(isValidWalletAddress, {
@@ -58,6 +59,15 @@ walletsRouter.post("/analyze", async (c) => {
     .returning();
 
   analysisQueue.enqueue(() => runAnalysis(request.id));
+
+  // Forward to the on-chain ReputationRegistry (any address may submit).
+  const registry = getRegistry();
+  if (registry) {
+    void registry
+      .submitAssessment(address as `0x${string}`, walletType)
+      .then((hash) => console.log(`submitAssessment tx: ${hash}`))
+      .catch((err) => console.warn("on-chain submitAssessment failed:", err));
+  }
 
   return c.json(
     { requestId: request.id, walletAddress: address, status: "PENDING" },
@@ -121,10 +131,22 @@ walletsRouter.get("/:address/assessment", async (c) => {
       .where(eq(attestations.walletId, wallet.id)),
   ]);
 
+  // Best-effort demo lending terms from the on-chain DemoLending contract.
+  let loanTerms = null;
+  const registry = getRegistry();
+  if (registry) {
+    try {
+      loanTerms = await registry.getLoanTerms(address as `0x${string}`);
+    } catch (err) {
+      console.warn("getLoanTerms failed:", err);
+    }
+  }
+
   return c.json({
     wallet,
     metrics: metrics[0] ?? null,
     assessment: assessment[0] ?? null,
     attestations: attestationRows,
+    loanTerms,
   });
 });

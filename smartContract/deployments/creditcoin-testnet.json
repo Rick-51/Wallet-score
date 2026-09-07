@@ -1,0 +1,26 @@
+{
+  "network": "creditcoinTestnet",
+  "chainId": 102031,
+  "explorer": "https://creditcoin-testnet.blockscout.com",
+  "deployer": "0x9a8898348472be7e89bb2ddd55f99be8645e26f3",
+  "contracts": {
+    "MockAttestcoinVerifier": {
+      "address": "0x813f606225df4f359b43b56ae2007ae3daa96e22",
+      "abi": "artifacts/contracts/mocks/MockAttestcoinVerifier.sol/MockAttestcoinVerifier.json"
+    },
+    "ReputationRegistry": {
+      "address": "0x34e02c180fadeee3523fb985b4a624264f5c7b63",
+      "abi": "artifacts/contracts/ReputationRegistry.sol/ReputationRegistry.json"
+    },
+    "DemoLending": {
+      "address": "0xe0c480ee6831a9a8fc2c48c3066b8f9be954034b",
+      "abi": "artifacts/contracts/DemoLending.sol/DemoLending.json"
+    }
+  },
+  "notes": {
+    "owner": "deployer (0x9a8898348472be7e89bb2ddd55f99be8645e26f3)",
+    "oracle": "deployer by default — call setOracle() if the backend worker uses a different account",
+    "reviewer": "none added yet — call addReviewer() to grant a human reviewer",
+    "attestcoin": "MockAttestcoinVerifier (always returns true) — swap for the real precompile for production"
+  }
+}

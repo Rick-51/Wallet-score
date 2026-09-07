@@ -92,10 +92,12 @@ export const assessments = sqliteTable("assessments", {
 
   reputationScore: integer("reputation_score").notNull(),
   riskLevel: text("risk_level", { enum: riskLevels }).notNull(),
-  suggestedCreditLimit: text("suggested_credit_limit").notNull(),
-  suggestedApr: text("suggested_apr").notNull(),
-  suggestedCollateralRatio: text("suggested_collateral_ratio").notNull(),
+  // Contract-native units: USD minor units (×100) and basis points.
+  creditLimitUsdMinor: integer("credit_limit_usd_minor").notNull(),
+  aprBps: integer("apr_bps").notNull(),
+  collateralBps: integer("collateral_bps").notNull(),
   reviewerNotes: text("reviewer_notes").notNull().default(""),
+  onchainTxHash: text("onchain_tx_hash"),
 
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()
@@ -113,6 +115,7 @@ export const attestations = sqliteTable("attestations", {
   proofStatus: text("proof_status", { enum: proofStatuses })
     .notNull()
     .default("PENDING"),
+  onchainTxHash: text("onchain_tx_hash"),
   verifiedAt: integer("verified_at", { mode: "timestamp_ms" }),
 });
 

@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "c6b33aee-e26a-4b88-ae44-0417915bb469",
+  "id": "db84dfd1-c448-400d-8678-b27d2ff7d378",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "assessment_requests": {
@@ -102,23 +102,23 @@
           "notNull": true,
           "autoincrement": false
         },
-        "suggested_credit_limit": {
-          "name": "suggested_credit_limit",
-          "type": "text",
+        "credit_limit_usd_minor": {
+          "name": "credit_limit_usd_minor",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "suggested_apr": {
-          "name": "suggested_apr",
-          "type": "text",
+        "apr_bps": {
+          "name": "apr_bps",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "suggested_collateral_ratio": {
-          "name": "suggested_collateral_ratio",
-          "type": "text",
+        "collateral_bps": {
+          "name": "collateral_bps",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -130,6 +130,13 @@
           "notNull": true,
           "autoincrement": false,
           "default": "''"
+        },
+        "onchain_tx_hash": {
+          "name": "onchain_tx_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         },
         "created_at": {
           "name": "created_at",
@@ -217,6 +224,13 @@
           "notNull": true,
           "autoincrement": false,
           "default": "'PENDING'"
+        },
+        "onchain_tx_hash": {
+          "name": "onchain_tx_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         },
         "verified_at": {
           "name": "verified_at",

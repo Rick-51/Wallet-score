@@ -40,6 +40,9 @@ export interface AaveMetrics {
   latestBorrowTx: string | null;
   latestRepayTx: string | null;
   latestLiquidationTx: string | null;
+  latestBorrowBlock: bigint | null;
+  latestRepayBlock: bigint | null;
+  latestLiquidationBlock: bigint | null;
 }
 
 const EMPTY: AaveMetrics = {
@@ -56,6 +59,9 @@ const EMPTY: AaveMetrics = {
   latestBorrowTx: null,
   latestRepayTx: null,
   latestLiquidationTx: null,
+  latestBorrowBlock: null,
+  latestRepayBlock: null,
+  latestLiquidationBlock: null,
 };
 
 /** Raw, loosely-typed log shape returned by paginated getLogs. */
@@ -218,6 +224,9 @@ export async function fetchAaveMetrics(address: Address): Promise<AaveMetrics> {
       latestBorrowTx: borrowLogs.at(-1)?.transactionHash ?? null,
       latestRepayTx: repayLogs.at(-1)?.transactionHash ?? null,
       latestLiquidationTx: liquidationLogs.at(-1)?.transactionHash ?? null,
+      latestBorrowBlock: borrowLogs.at(-1)?.blockNumber ?? null,
+      latestRepayBlock: repayLogs.at(-1)?.blockNumber ?? null,
+      latestLiquidationBlock: liquidationLogs.at(-1)?.blockNumber ?? null,
     };
   } catch (err) {
     console.warn("fetchAaveMetrics failed:", err);

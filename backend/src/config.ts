@@ -24,6 +24,23 @@ const envSchema = z.object({
   AAVE_START_BLOCK: z.coerce.bigint().default(0n),
   LOG_CHUNK: z.coerce.bigint().default(5000n),
 
+  // ---- Creditcoin testnet / on-chain contracts ----
+  CREDITCOIN_RPC_URL: z
+    .string()
+    .min(1)
+    .default("https://rpc.cc3-testnet.creditcoin.network"),
+  // Signer for on-chain writes (submitAssessment / submitEvidence / review).
+  // Leave empty to disable on-chain sync (backend runs read-only, local only).
+  CREDITCOIN_PRIVATE_KEY: z.string().optional(),
+  // Hardhat deployment record: contains contract addresses + ABI paths.
+  DEPLOYMENT_FILE: z
+    .string()
+    .min(1)
+    .default("../smartContract/deployments/creditcoin-testnet.json"),
+  // Optional overrides (defaults are read from DEPLOYMENT_FILE).
+  REGISTRY_ADDRESS: z.string().optional(),
+  DEMO_LENDING_ADDRESS: z.string().optional(),
+
   // Optional stablecoin token addresses for balance aggregation.
   USDC_SEPOLIA: z.string().optional(),
   USDT_SEPOLIA: z.string().optional(),

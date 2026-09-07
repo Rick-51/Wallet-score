@@ -12,6 +12,7 @@ import { fetchAaveMetrics } from "./aave.js";
 import { AttestcoinClient } from "./attestcoin.js";
 import { chainIdFor, readBalances } from "./chain.js";
 import { fetchTxHistory } from "./etherscan.js";
+import { getRegistry } from "./registry.js";
 
 /**
  * The "Backend Worker" body. Runs off the HTTP request via the in-process queue:
@@ -96,19 +97,25 @@ export async function runAnalysis(requestId: number): Promise<void> {
       })
       .where(eq(wallets.id, wallet.id));
 
-    // Create verification stubs for each observed lending activity.
-    const attest = new AttestcoinClient(chainId);
-    const evidence: Array<{ tx: string | null; type: EventType }> = [
-      { tx: aave.latestBorrowTx, type: "BORROW" },
-      { tx: aave.latestRepayTx, type: "REPAY" },
-      { tx: aave.latestLiquidationTx, type: "LIQUIDATION" },
+    // Submit verified evidence (Attestcoin verification layer).
+    const attest = new AttestcoinClient(getRegistry(), chainId);
+    const evidence: Array<{
+      tx: string | null;
+      block: bigint | null;
+      type: EventType;
+    }> = [
+      { tx: aave.latestBorrowTx, block: aave.latestBorrowBlock, type: "BORROW" },
+      { tx: aave.latestRepayTx, block: aave.latestRepayBlock, type: "REPAY" },
+      { tx: aave.latestLiquidationTx, block: aave.latestLiquidationBlock, type: "LIQUIDATION" },
     ];
     for (const e of evidence) {
       if (e.tx) {
         await attest.submitEvidence({
           walletId: wallet.id,
+          walletAddress: wallet.address,
           chainId,
           sourceTxHash: e.tx,
+          blockHeight: e.block ?? 0n,
           eventType: e.type,
         });
       }

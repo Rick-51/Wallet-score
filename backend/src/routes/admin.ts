@@ -18,13 +18,15 @@ import {
   notFound,
   unauthorized,
 } from "../lib/errors.js";
+import { getRegistry } from "../services/registry.js";
 
 const reviewSchema = z.object({
-  reputationScore: z.number().int().min(0).max(1000),
+  reputationScore: z.coerce.number().int().min(0).max(1000),
   riskLevel: z.enum(riskLevels),
-  suggestedCreditLimit: z.string().min(1),
-  suggestedApr: z.string().min(1),
-  suggestedCollateralRatio: z.string().min(1),
+  // Contract-native units: USD minor units (×100) and basis points.
+  creditLimitUsdMinor: z.coerce.number().int().min(0),
+  aprBps: z.coerce.number().int().min(0).max(65535),
+  collateralBps: z.coerce.number().int().min(0).max(65535),
   reviewerNotes: z.string().default(""),
 });
 
@@ -96,6 +98,32 @@ adminRouter.post("/assessments/:id/review", async (c) => {
   if (!parsed.success) throw badRequest(firstZodMessage(parsed.error));
   const body = parsed.data;
 
+  const wallet = (
+    await db.select().from(wallets).where(eq(wallets.id, request.walletId)).limit(1)
+  )[0];
+  if (!wallet) throw notFound("Wallet not found");
+
+  // On-chain review (best-effort — requires the signer to be owner or a reviewer).
+  let onchainTxHash: string | null = null;
+  const registry = getRegistry();
+  if (registry) {
+    try {
+      onchainTxHash = await registry.reviewAssessment(
+        wallet.address as `0x${string}`,
+        {
+          reputationScore: body.reputationScore,
+          riskLevel: body.riskLevel,
+          creditLimitUsdMinor: BigInt(body.creditLimitUsdMinor),
+          aprBps: body.aprBps,
+          collateralBps: body.collateralBps,
+          reviewerNotes: body.reviewerNotes,
+        },
+      );
+    } catch (err) {
+      console.warn("on-chain reviewAssessment failed:", err);
+    }
+  }
+
   const [assessment] = await db
     .insert(assessments)
     .values({
@@ -103,10 +131,11 @@ adminRouter.post("/assessments/:id/review", async (c) => {
       requestId: request.id,
       reputationScore: body.reputationScore,
       riskLevel: body.riskLevel,
-      suggestedCreditLimit: body.suggestedCreditLimit,
-      suggestedApr: body.suggestedApr,
-      suggestedCollateralRatio: body.suggestedCollateralRatio,
+      creditLimitUsdMinor: body.creditLimitUsdMinor,
+      aprBps: body.aprBps,
+      collateralBps: body.collateralBps,
       reviewerNotes: body.reviewerNotes,
+      onchainTxHash,
     })
     .returning();
 
@@ -115,5 +144,5 @@ adminRouter.post("/assessments/:id/review", async (c) => {
     .set({ status: "APPROVED", reviewedAt: new Date() })
     .where(eq(assessmentRequests.id, request.id));
 
-  return c.json({ assessment }, 201);
+  return c.json({ assessment, onchainTxHash }, 201);
 });

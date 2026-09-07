@@ -10,7 +10,10 @@
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx src/db/migrate.ts"
+    "db:migrate": "tsx src/db/migrate.ts",
+    "setup:roles": "tsx src/scripts/setup-roles.ts",
+    "onchain:check": "tsx src/scripts/onchain-check.ts",
+    "onchain:demo": "tsx src/scripts/onchain-demo.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",
